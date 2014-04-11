@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"github.com/cactus/go-statsd-client/statsd"
 	"github.com/tatsushid/go-fastping"
@@ -20,10 +21,37 @@ type response struct {
 }
 
 func main() {
-	if len(os.Args) != 2 {
-		fmt.Fprintf(os.Stderr, "Usage: %s {statsdhost}\n", os.Args[0])
+	var statsdKey string
+	var statsdServer string
+	var targetsFile string
+
+	hostname, err := os.Hostname()
+	if err != nil {
+		fmt.Println("Mommy why didn't you give me a name?")
 		os.Exit(1)
 	}
+
+	defaultKey := fmt.Sprintf("goecho.%s", hostname)
+
+	const (
+		keyUsage      = "The text we prepend to all statsd keys"
+		defaultServer = "127.0.0.1:8125"
+		serverUsage   = "The statsd server we use"
+		defaultFile   = "targets.cfg"
+		fileUsage     = "The newline delimited file we look for IP addresses to ping"
+	)
+
+	// runtime options
+	flag.StringVar(&statsdKey, "key", defaultKey, keyUsage)
+	flag.StringVar(&statsdServer, "server", defaultServer, serverUsage)
+	flag.StringVar(&targetsFile, "file", defaultFile, fileUsage)
+
+	// shorthand options
+	flag.StringVar(&statsdKey, "k", defaultKey, keyUsage+" (shorthand)")
+	flag.StringVar(&statsdServer, "s", defaultServer, serverUsage+" (shorthand)")
+	flag.StringVar(&targetsFile, "f", defaultFile, fileUsage+" (shorthand)")
+
+	flag.Parse()
 
 	// go channels that we work responses off of
 	onRecv, onIdle := make(chan *response), make(chan bool)
@@ -32,22 +60,16 @@ func main() {
 	pinger := fastping.NewPinger()
 
 	// get targets file of IPs
-	targetcfg, err := ioutil.ReadFile("targets.cfg")
+	targetcfg, err := ioutil.ReadFile(targetsFile)
 	if err != nil {
-		fmt.Println("Unable to read targets.cfg")
+		fmt.Println("Unable to read IP address file!")
 		return
 	}
 
 	targets := strings.Split(string(targetcfg), "\n")
 
-	hostname, err := os.Hostname()
-	if err != nil {
-		fmt.Println("Mommy why didn't you give me a name?")
-		os.Exit(1)
-	}
-
 	// initiate statsd stuff
-	statsd, err := statsd.Dial(os.Args[1], fmt.Sprintf("goecho.%s", hostname))
+	statsd, err := statsd.Dial(statsdServer, statsdKey)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Fatal error: %s\n", err.Error())
 		os.Exit(1)
